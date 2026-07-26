@@ -75,11 +75,12 @@ fn transcribe_remote(audio: &[f32], settings: &AppSettings) -> Result<String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(120))
         .build()?;
-    let mut request = client.post(&endpoint).multipart(
-        reqwest::blocking::multipart::Form::new()
-            .part("file", file)
-            .text("model", settings.remote_transcription_model.clone()),
-    );
+    let mut form = reqwest::blocking::multipart::Form::new().part("file", file);
+    if !settings.remote_transcription_model.is_empty() {
+        form = form.text("model", settings.remote_transcription_model.clone());
+    }
+    debug!("Sending remote transcription request to {}", endpoint);
+    let mut request = client.post(&endpoint).multipart(form);
     if let Some(api_key) = settings.remote_transcription_api_keys.get("remote") {
         if !api_key.is_empty() {
             request = request.bearer_auth(api_key);

@@ -12,7 +12,7 @@ export const RemoteTranscriptionSettings: React.FC = () => {
   const [enabled, setEnabled] = useState(false);
   const [url, setUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState("whisper-1");
+  const [model, setModel] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -26,7 +26,7 @@ export const RemoteTranscriptionSettings: React.FC = () => {
     setEnabled(remote.remote_transcription_enabled ?? false);
     setUrl(remote.remote_transcription_url ?? "");
     setApiKey(remote.remote_transcription_api_keys?.remote ?? "");
-    setModel(remote.remote_transcription_model ?? "whisper-1");
+    setModel(remote.remote_transcription_model ?? "");
   }, [settings]);
 
   const save = async (nextEnabled = enabled) => {
@@ -93,7 +93,7 @@ export const RemoteTranscriptionSettings: React.FC = () => {
           value={model}
           onChange={(event) => setModel(event.target.value)}
           onBlur={() => void save()}
-          placeholder="whisper-1"
+          placeholder="e.g. stt-vibevoice"
           className="w-80"
         />
       </SettingContainer>

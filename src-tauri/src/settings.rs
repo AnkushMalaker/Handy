@@ -701,7 +701,7 @@ fn default_post_process_api_keys() -> SecretMap {
 }
 
 fn default_remote_transcription_model() -> String {
-    "whisper-1".to_string()
+    String::new()
 }
 
 fn default_model_for_provider(provider_id: &str) -> String {
