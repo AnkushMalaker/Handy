@@ -43,6 +43,32 @@ struct RemoteTranscriptionResponse {
 }
 
 fn transcribe_remote(audio: &[f32], settings: &AppSettings) -> Result<String> {
+    // Remote ASR services commonly apply a stricter speech threshold than local
+    // models. Normalize quiet microphone input before encoding so valid speech
+    // is not returned as an empty transcript.
+    let rms = (audio
+        .iter()
+        .map(|sample| {
+            let sample = sample.clamp(-1.0, 1.0);
+            sample * sample
+        })
+        .sum::<f32>()
+        / audio.len() as f32)
+        .sqrt();
+    let peak = audio
+        .iter()
+        .map(|sample| sample.abs())
+        .fold(0.0_f32, f32::max);
+    let gain = if rms > 0.0001 && peak > 0.0 {
+        (0.1 / rms).min(0.95 / peak).min(31.622)
+    } else {
+        1.0
+    };
+    debug!(
+        "Remote audio normalization: rms={:.5}, peak={:.5}, gain={:.2}",
+        rms, peak, gain
+    );
+
     let mut cursor = Cursor::new(Vec::new());
     let spec = hound::WavSpec {
         channels: 1,
@@ -53,7 +79,7 @@ fn transcribe_remote(audio: &[f32], settings: &AppSettings) -> Result<String> {
     {
         let mut writer = hound::WavWriter::new(&mut cursor, spec)?;
         for sample in audio {
-            writer.write_sample((sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)?;
+            writer.write_sample(((sample * gain).clamp(-1.0, 1.0) * i16::MAX as f32) as i16)?;
         }
         writer.finalize()?;
     }
