@@ -868,6 +868,30 @@ pub fn change_external_script_path_setting(
 
 #[tauri::command]
 #[specta::specta]
+pub fn change_remote_transcription_setting(
+    app: AppHandle,
+    enabled: bool,
+    url: String,
+    api_key: String,
+    model: String,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    let url = url.trim().trim_end_matches('/').to_string();
+    if enabled && url.is_empty() {
+        return Err("Remote transcription URL is required".to_string());
+    }
+    settings.remote_transcription_enabled = enabled;
+    settings.remote_transcription_url = url;
+    settings
+        .remote_transcription_api_keys
+        .insert("remote".to_string(), api_key.trim().to_string());
+    settings.remote_transcription_model = model.trim().to_string();
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn change_clipboard_handling_setting(app: AppHandle, handling: String) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     let parsed = match handling.as_str() {

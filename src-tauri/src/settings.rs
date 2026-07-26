@@ -301,7 +301,7 @@ pub enum OrtAcceleratorSetting {
     Rocm,
 }
 
-#[derive(Clone, Serialize, Deserialize, Type)]
+#[derive(Clone, Default, Serialize, Deserialize, Type)]
 #[serde(transparent)]
 pub(crate) struct SecretMap(HashMap<String, String>);
 
@@ -371,6 +371,14 @@ pub struct AppSettings {
     pub whats_new_last_seen_version: String,
     #[serde(default = "default_model")]
     pub selected_model: String,
+    #[serde(default)]
+    pub remote_transcription_enabled: bool,
+    #[serde(default)]
+    pub remote_transcription_url: String,
+    #[serde(default)]
+    pub remote_transcription_api_keys: SecretMap,
+    #[serde(default = "default_remote_transcription_model")]
+    pub remote_transcription_model: String,
     #[serde(default)]
     pub onboarding_completed: bool,
     #[serde(default = "default_always_on_microphone")]
@@ -692,6 +700,10 @@ fn default_post_process_api_keys() -> SecretMap {
     SecretMap(map)
 }
 
+fn default_remote_transcription_model() -> String {
+    "whisper-1".to_string()
+}
+
 fn default_model_for_provider(provider_id: &str) -> String {
     if provider_id == APPLE_INTELLIGENCE_PROVIDER_ID {
         return APPLE_INTELLIGENCE_DEFAULT_MODEL_ID.to_string();
@@ -849,6 +861,10 @@ pub fn get_default_settings() -> AppSettings {
         show_whats_new_on_update: default_show_whats_new_on_update(),
         whats_new_last_seen_version: default_whats_new_last_seen_version(),
         selected_model: "".to_string(),
+        remote_transcription_enabled: false,
+        remote_transcription_url: String::new(),
+        remote_transcription_api_keys: SecretMap::default(),
+        remote_transcription_model: default_remote_transcription_model(),
         onboarding_completed: false,
         always_on_microphone: false,
         selected_microphone: None,
