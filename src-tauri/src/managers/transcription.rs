@@ -5,7 +5,7 @@ use crate::settings::{
     get_settings, AppSettings, ModelUnloadTimeout, OrtAcceleratorSetting,
     TranscribeAcceleratorSetting,
 };
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -86,7 +86,25 @@ fn transcribe_remote(audio: &[f32], settings: &AppSettings) -> Result<String> {
             request = request.bearer_auth(api_key);
         }
     }
-    let response = request.send()?.error_for_status()?;
+    let response = request.send()?;
+    let status = response.status();
+    if !status.is_success() {
+        // Toast the server's `detail` rather than reqwest's generic status line.
+        let body = response.text().unwrap_or_default();
+        let detail = serde_json::from_str::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| {
+                v.get("detail")
+                    .and_then(|d| d.as_str())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_else(|| body.trim().to_string());
+        return Err(if detail.is_empty() {
+            anyhow!("Transcription server returned HTTP {status}")
+        } else {
+            anyhow!("{detail}")
+        });
+    }
     Ok(response.json::<RemoteTranscriptionResponse>()?.text)
 }
 
