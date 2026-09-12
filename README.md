@@ -1,5 +1,7 @@
 # Handy
 
+> **About this fork:** It aims to stay current with [upstream Handy](https://github.com/cjpais/Handy) while carrying one addition: optional OpenAI-compatible API transcription. Configure the URL, optional API key, and model under **Settings → Models → Remote Transcription**. When enabled, recordings go to that server; when disabled, Handy uses local transcription.
+
 [![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/WVBeWsNXK4)
 
 **A free, open source, and extensible speech-to-text application that works completely offline.**
