@@ -8,10 +8,11 @@ use crate::settings::{
     get_settings, AppSettings, ModelUnloadTimeout, OrtAcceleratorSetting,
     TranscribeAcceleratorSetting,
 };
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use std::io::Cursor;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex, MutexGuard, OnceLock};
@@ -38,6 +39,77 @@ use transcribe_rs::{
 
 const STREAM_PERF_LOG_INTERVAL: Duration = Duration::from_secs(5);
 const STREAM_FINALIZE_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
+
+#[derive(Deserialize)]
+struct RemoteTranscriptionResponse {
+    text: String,
+}
+
+fn transcribe_remote(audio: &[f32], settings: &AppSettings) -> Result<String> {
+    let mut cursor = Cursor::new(Vec::new());
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 16_000,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    {
+        let mut writer = hound::WavWriter::new(&mut cursor, spec)?;
+        for sample in audio {
+            writer.write_sample((sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)?;
+        }
+        writer.finalize()?;
+    }
+
+    let endpoint = if settings
+        .remote_transcription_url
+        .ends_with("/audio/transcriptions")
+    {
+        settings.remote_transcription_url.clone()
+    } else {
+        format!(
+            "{}/audio/transcriptions",
+            settings.remote_transcription_url.trim_end_matches('/')
+        )
+    };
+    let file = reqwest::blocking::multipart::Part::bytes(cursor.into_inner())
+        .file_name("recording.wav")
+        .mime_str("audio/wav")?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(120))
+        .build()?;
+    let mut form = reqwest::blocking::multipart::Form::new().part("file", file);
+    if !settings.remote_transcription_model.is_empty() {
+        form = form.text("model", settings.remote_transcription_model.clone());
+    }
+    debug!("Sending remote transcription request to {}", endpoint);
+    let mut request = client.post(&endpoint).multipart(form);
+    if let Some(api_key) = settings.remote_transcription_api_keys.get("remote") {
+        if !api_key.is_empty() {
+            request = request.bearer_auth(api_key);
+        }
+    }
+    let response = request.send()?;
+    let status = response.status();
+    if !status.is_success() {
+        // Toast the server's `detail` rather than reqwest's generic status line.
+        let body = response.text().unwrap_or_default();
+        let detail = serde_json::from_str::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| {
+                v.get("detail")
+                    .and_then(|d| d.as_str())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_else(|| body.trim().to_string());
+        return Err(if detail.is_empty() {
+            anyhow!("Transcription server returned HTTP {status}")
+        } else {
+            anyhow!("{detail}")
+        });
+    }
+    Ok(response.json::<RemoteTranscriptionResponse>()?.text)
+}
 
 fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
     if let Some(message) = payload.downcast_ref::<&str>() {
@@ -1195,6 +1267,23 @@ impl TranscriptionManager {
             return Ok(String::new());
         }
 
+        let settings = get_settings(&self.app_handle);
+        if settings.remote_transcription_enabled {
+            let st = std::time::Instant::now();
+            let result = transcribe_remote(&audio, &settings)?;
+            info!(
+                "Remote transcription completed in {:.2}s",
+                st.elapsed().as_secs_f32()
+            );
+            return Ok(post_process_transcription_text(
+                result,
+                &settings,
+                false,
+                &OutputLanguageEvidence::Unknown,
+                &[],
+            ));
+        }
+
         // Check if model is loaded, if not try to load it
         {
             // If the model is loading, wait for it to complete.
@@ -1210,8 +1299,6 @@ impl TranscriptionManager {
         }
 
         // Get current settings for configuration
-        let settings = get_settings(&self.app_handle);
-
         // Validate selected language against the model's supported languages.
         // If the language isn't supported, fall back to "auto" to prevent errors.
         // Validate against the model that's actually loaded (which can differ

@@ -325,7 +325,7 @@ pub enum VadBackend {
     Earshot,
 }
 
-#[derive(Clone, Serialize, Deserialize, Type)]
+#[derive(Clone, Default, Serialize, Deserialize, Type)]
 #[serde(transparent)]
 pub(crate) struct SecretMap(HashMap<String, String>);
 
@@ -401,6 +401,14 @@ pub struct AppSettings {
     pub whats_new_last_seen_version: String,
     #[serde(default = "default_model")]
     pub selected_model: String,
+    #[serde(default)]
+    pub remote_transcription_enabled: bool,
+    #[serde(default)]
+    pub remote_transcription_url: String,
+    #[serde(default)]
+    pub remote_transcription_api_keys: SecretMap,
+    #[serde(default)]
+    pub remote_transcription_model: String,
     #[serde(default)]
     pub onboarding_completed: bool,
     #[serde(default = "default_always_on_microphone")]
@@ -921,6 +929,10 @@ pub fn get_default_settings() -> AppSettings {
         show_whats_new_on_update: default_show_whats_new_on_update(),
         whats_new_last_seen_version: default_whats_new_last_seen_version(),
         selected_model: "".to_string(),
+        remote_transcription_enabled: false,
+        remote_transcription_url: String::new(),
+        remote_transcription_api_keys: SecretMap::default(),
+        remote_transcription_model: String::new(),
         onboarding_completed: false,
         always_on_microphone: false,
         selected_microphone: None,
